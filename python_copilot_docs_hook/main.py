@@ -20,7 +20,7 @@ def get_copilot_suggestion(code: str) -> str:
         # Try direct suggestion first
         suggestion = _try_copilot_command(
             ['gh', 'copilot', 'suggest'],
-            f"Write a Python docstring for:\n{code}"
+            f"Write a Python docstring for this code:\n\n{code}"
         )
         if suggestion:
             return format_suggestion(suggestion)
@@ -28,8 +28,7 @@ def get_copilot_suggestion(code: str) -> str:
         # Try explain command
         suggestion = _try_copilot_command(
             ['gh', 'copilot', 'explain'],
-            code,
-            additional_args=['--language', 'python']
+            code
         )
         if suggestion:
             return format_suggestion(suggestion)
@@ -54,27 +53,22 @@ def _try_copilot_command(command: List[str], input_text: str, additional_args: L
         cmd = command + (additional_args or [])
         logger.debug(f"Trying command: {' '.join(cmd)}")
         
-        # Use temporary file for input
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
-            tmp.write(input_text)
-            tmp.flush()
-            
-            result = subprocess.run(
-                cmd + ['--file', tmp.name],
-                capture_output=True,
-                text=True,
-                check=False  # Don't raise exception on non-zero exit
-            )
-            
-            os.unlink(tmp.name)
-            
-            if result.returncode == 0 and result.stdout:
-                return result.stdout
-            
-            if result.stderr:
-                logger.debug(f"Command failed: {result.stderr}")
-            
-            return None
+        # Run command with input through stdin
+        result = subprocess.run(
+            cmd,
+            input=input_text,
+            capture_output=True,
+            text=True,
+            check=False  # Don't raise exception on non-zero exit
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            return result.stdout
+        
+        if result.stderr:
+            logger.debug(f"Command failed: {result.stderr}")
+        
+        return None
             
     except Exception as e:
         logger.debug(f"Command execution failed: {e}")
