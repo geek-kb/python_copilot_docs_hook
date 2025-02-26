@@ -13,14 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger('python_copilot_docs_hook')
 
 def check_docstrings(filename: str) -> Dict[str, List[int]]:
-    """Check for missing docstrings in Python file.
-
-    Args:
-        filename: Path to the Python file to check
-
-    Returns:
-        Dictionary containing line numbers of missing docstrings
-    """
+    """Check for missing docstrings in Python file."""
     missing_docs = {'module': [], 'functions': []}
 
     with open(filename, 'r', encoding='utf-8') as f:
@@ -45,15 +38,7 @@ def check_docstrings(filename: str) -> Dict[str, List[int]]:
     return missing_docs
 
 def generate_report(filename: str, missing_docs: Dict[str, List[int]]) -> str:
-    """Generate report for missing documentation.
-
-    Args:
-        filename: Name of the file being checked
-        missing_docs: Dictionary containing missing docstring locations
-
-    Returns:
-        Formatted report string
-    """
+    """Generate report for missing documentation."""
     report = []
 
     if missing_docs['module'] or missing_docs['functions']:
@@ -61,13 +46,12 @@ def generate_report(filename: str, missing_docs: Dict[str, List[int]]) -> str:
 
         if missing_docs['module']:
             report.append("- Module docstring missing")
+            report.append("  Suggestion: Place cursor at line 1 and press Alt+\\")
 
         if missing_docs['functions']:
             report.append("- Function docstrings missing at lines: " +
                         ", ".join(map(str, missing_docs['functions'])))
-
-        report.append("\nSuggestion: Use GitHub Copilot (Alt+\\) to generate documentation")
-        report.append("Position cursor at function definition and trigger Copilot suggestion")
+            report.append("  Suggestion: Place cursor at function definition and press Alt+\\")
 
     return "\n".join(report)
 
