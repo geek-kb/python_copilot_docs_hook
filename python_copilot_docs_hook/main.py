@@ -293,8 +293,16 @@ def validate_file(filename: str) -> bool:
         
     return True
 
-def update_file_with_docs(filename: str) -> bool:
-    """Update Python file with generated documentation."""
+def update_file_with_docs(filename: str, api_key: str) -> bool:
+    """Update Python file with generated documentation.
+    
+    Args:
+        filename: Path to the Python file
+        api_key: OpenAI API key
+        
+    Returns:
+        bool: True if file was updated successfully, False otherwise
+    """
     if not validate_file(filename):
         return False
 
@@ -307,23 +315,14 @@ def update_file_with_docs(filename: str) -> bool:
         try:
             tree = ast.parse(content)
         except SyntaxError as e:
-            lines = content.splitlines()
-            if 0 <= e.lineno - 1 < len(lines):
-                problematic_line = lines[e.lineno - 1]
-                logger.error(f"Syntax error in file {filename}:")
-                logger.error(f"Line {e.lineno}: {problematic_line}")
-                logger.error(f"Error: {e.msg}")
-                logger.error(" " * (e.offset + 7) + "^")
-            else:
-                logger.error(f"Syntax error in file {filename} at line {e.lineno}: {e.msg}")
-            return False
+            ...existing code...
 
         modified = False
         
         # Generate module docstring if missing
         if not ast.get_docstring(tree):
             logger.debug("Generating module docstring")
-            module_doc = get_suggestion_openai(content)
+            module_doc = get_suggestion_openai(content, api_key)  # Pass api_key
             if module_doc:
                 content = f'"""{module_doc}"""\n\n{content}'
                 modified = True
@@ -333,7 +332,7 @@ def update_file_with_docs(filename: str) -> bool:
             if isinstance(node, ast.FunctionDef) and not ast.get_docstring(node):
                 logger.debug(f"Generating docstring for function: {node.name}")
                 func_code = ast.get_source_segment(content, node)
-                doc = get_suggestion_openai(func_code)
+                doc = get_suggestion_openai(func_code, api_key)  # Pass api_key
                 
                 if doc:
                     lines = content.splitlines()
@@ -342,18 +341,6 @@ def update_file_with_docs(filename: str) -> bool:
                     lines.insert(node.lineno, '\n'.join(doc_lines))
                     content = '\n'.join(lines)
                     modified = True
-
-        # Write changes if modified
-        if modified:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(content)
-            logger.info(f"Updated documentation in {filename}")
-
-        return True
-
-    except Exception as e:
-        logger.error(f"Error processing file {filename}: {e}")
-        return False
 
 def main() -> int:
     """Process Python files and add missing documentation."""
