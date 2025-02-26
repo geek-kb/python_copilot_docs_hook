@@ -21,4 +21,5 @@ wheels/
 *.egg
 .DS_Store
 venv/
+*venv*
 
