@@ -22,9 +22,24 @@ def get_copilot_suggestion(code: str) -> str:
             temp.write(code)
             temp_path = temp.name
 
-        # Use gh copilot explain with file
+        # Try suggest command first
+        try:
+            result = subprocess.run(
+                ['gh', 'copilot', 'suggest', '-t', 'python'],
+                input=f"Generate Python docstring for:\n{code}",
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            if result.stdout:
+                return format_suggestion(result.stdout)
+        except subprocess.CalledProcessError:
+            logger.debug("Suggest command failed, trying explain command")
+
+        # Fallback to explain command
         result = subprocess.run(
-            ['gh', 'copilot', 'explain', '--path', temp_path],
+            ['gh', 'copilot', 'explain'],
+            input=code,
             capture_output=True,
             text=True,
             check=True
@@ -33,43 +48,46 @@ def get_copilot_suggestion(code: str) -> str:
         # Clean up temp file
         os.unlink(temp_path)
 
-        # Process explanation into docstring format
-        explanation = result.stdout
-        if not explanation:
-            return ""
-
-        # Convert explanation to docstring
-        lines = []
-        paragraphs = explanation.split('\n\n')
-        
-        # Add main description
-        if paragraphs:
-            lines.append(paragraphs[0].strip())
-            lines.append("")
-        
-        # Look for parameters
-        for para in paragraphs:
-            if "Parameters:" in para or "Args:" in para:
-                lines.append("Args:")
-                for line in para.split('\n')[1:]:
-                    if line.strip():
-                        lines.append(f"    {line.strip()}")
-                lines.append("")
-        
-        # Look for return value
-        for para in paragraphs:
-            if "Returns:" in para:
-                lines.append("Returns:")
-                for line in para.split('\n')[1:]:
-                    if line.strip():
-                        lines.append(f"    {line.strip()}")
-                lines.append("")
-
-        return "\n".join(lines).strip()
+        return format_suggestion(result.stdout) if result.stdout else ""
 
     except Exception as e:
         logger.error(f"Error getting Copilot suggestion: {e}")
         return ""
+
+def format_suggestion(text: str) -> str:
+    """Format Copilot output as a proper docstring."""
+    lines = []
+    paragraphs = text.split('\n\n')
+
+    # Extract main description
+    if paragraphs:
+        desc = paragraphs[0].strip()
+        if 'This code' in desc or 'The function' in desc:
+            desc = desc.split('.')[0].strip()
+        lines.append(desc)
+        lines.append("")
+
+    # Process parameters
+    for para in paragraphs:
+        if "Parameters:" in para or "Args:" in para:
+            lines.append("Args:")
+            for line in para.split('\n')[1:]:
+                if ':' in line:
+                    param, desc = line.split(':', 1)
+                    lines.append(f"    {param.strip()}: {desc.strip()}")
+                elif line.strip():
+                    lines.append(f"    {line.strip()}")
+            lines.append("")
+
+    # Process return value
+    for para in paragraphs:
+        if "Returns:" in para:
+            lines.append("Returns:")
+            ret_desc = para.split('Returns:', 1)[1].strip()
+            lines.append(f"    {ret_desc}")
+            lines.append("")
+
+    return "\n".join(lines).strip()
 
 def update_file_with_docs(filename: str) -> bool:
     """Update Python file with generated documentation."""
@@ -125,6 +143,17 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        # Check if gh CLI and Copilot extension are available
+        try:
+            subprocess.run(['gh', '--version'], check=True, capture_output=True)
+            subprocess.run(['gh', 'copilot', '--version'], check=True, capture_output=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.error("GitHub CLI or Copilot extension not found. Please install:")
+            logger.error("1. brew install gh")
+            logger.error("2. gh extension install github/gh-copilot")
+            logger.error("3. gh auth login")
+            return 1
+
         # Process each Python file
         exit_code = 0
         for filename in args.filenames:
