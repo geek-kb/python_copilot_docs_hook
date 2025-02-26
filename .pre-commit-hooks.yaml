@@ -1,0 +1,6 @@
+- id: python-copilot-docs
+  name: Python Copilot Documentation Generator
+  description: Check Python files for missing documentation and suggest using Copilot
+  entry: python-copilot-docs
+  language: python
+  types: [python]

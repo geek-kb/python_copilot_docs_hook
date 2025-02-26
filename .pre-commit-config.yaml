@@ -1,0 +1,13 @@
+---
+repos:
+  - repo: https://github.com/geek-kb/python_docs_hook
+    rev: v0.1.0 # Use the latest version you published
+    hooks:
+      - id: python-docs
+        args:
+          - "--doc-paths"
+          - "Scripts/simple_py_scripts"
+        verbose: true
+        types: [python] # Only run on Python files
+        stages: [commit] # Run during commit stage
+        additional_dependencies: []
