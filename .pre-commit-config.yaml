@@ -5,4 +5,10 @@ repos:
     hooks:
       - id: python-copilot-docs
         additional_dependencies: ["openai>=1.0.0"]
-        args: ["--openai-key", "${OPENAI_API_KEY}"]
+        args:
+          - "--openai-key"
+          - "${OPENAI_API_KEY}"
+          - "--rate-limit"
+          - "20"
+          - "--rate-period"
+          - "60"
