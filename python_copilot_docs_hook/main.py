@@ -207,11 +207,20 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        # Get API key from args or environment
+        api_key = args.openai_key
+        if api_key.startswith('${') and api_key.endswith('}'):
+            env_var = api_key[2:-1]
+            api_key = os.getenv(env_var)
+            if not api_key:
+                logger.error(f"Environment variable {env_var} not set")
+                return 1
+
         # Process files
         exit_code = 0
         for filename in args.filenames:
             logger.debug(f"Processing file: {filename}")
-            if not update_file_with_docs(filename, args.openai_key):
+            if not update_file_with_docs(filename, api_key):
                 exit_code = 1
 
         return exit_code
@@ -219,6 +228,3 @@ def main() -> int:
     except Exception as e:
         logger.error(f"Error processing files: {e}", exc_info=True)
         return 1
-
-if __name__ == '__main__':
-    exit(main())
