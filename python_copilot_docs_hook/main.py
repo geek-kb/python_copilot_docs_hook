@@ -111,48 +111,53 @@ def format_suggestion(text: str) -> str:
 
 def update_file_with_docs(filename: str) -> bool:
     """Update Python file with generated documentation."""
-    with open(filename, 'r', encoding='utf-8') as f:
-        content = f.read()
-
     try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        logger.error(f"Syntax error in file: {filename}")
-        return False
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
 
-    modified = False
+        try:
+            tree = ast.parse(content)
+        except SyntaxError as e:
+            logger.error(f"Syntax error in file {filename} at line {e.lineno}: {e.msg}")
+            return False
 
-    # Generate module docstring if missing
-    if not ast.get_docstring(tree):
-        logger.debug("Generating module docstring")
-        module_doc = get_copilot_suggestion(content)
-        if module_doc:
-            content = f'"""{module_doc}"""\n\n{content}'
-            modified = True
-
-    # Find and generate function docstrings
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and not ast.get_docstring(node):
-            logger.debug(f"Generating docstring for function: {node.name}")
-            func_code = ast.get_source_segment(content, node)
-            doc = get_copilot_suggestion(func_code)
-            
-            if doc:
-                # Insert docstring after function definition
-                lines = content.splitlines()
-                indent = ' ' * node.col_offset
-                doc_lines = [f'{indent}    """{line}"""' for line in doc.splitlines()]
-                lines.insert(node.lineno, '\n'.join(doc_lines))
-                content = '\n'.join(lines)
+        modified = False
+        
+        # Generate module docstring if missing
+        if not ast.get_docstring(tree):
+            logger.debug("Generating module docstring")
+            module_doc = get_copilot_suggestion(content)
+            if module_doc:
+                content = f'"""{module_doc}"""\n\n{content}'
                 modified = True
 
-    # Write changes if any modifications were made
-    if modified:
-        logger.info(f"Updating file with generated documentation: {filename}")
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(content)
+        # Find and generate function docstrings
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and not ast.get_docstring(node):
+                logger.debug(f"Generating docstring for function: {node.name}")
+                func_code = ast.get_source_segment(content, node)
+                doc = get_copilot_suggestion(func_code)
+                
+                if doc:
+                    # Insert docstring after function definition
+                    lines = content.splitlines()
+                    indent = ' ' * node.col_offset
+                    doc_lines = [f'{indent}    """{line}"""' for line in doc.splitlines()]
+                    lines.insert(node.lineno, '\n'.join(doc_lines))
+                    content = '\n'.join(lines)
+                    modified = True
 
-    return True
+        # Write changes if any modifications were made
+        if modified:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(content)
+            logger.info(f"Updated documentation in {filename}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error processing file {filename}: {e}")
+        return False
 
 def main() -> int:
     """Process Python files and add missing documentation."""
