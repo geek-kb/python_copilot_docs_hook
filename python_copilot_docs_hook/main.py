@@ -6,6 +6,7 @@ import os
 import ast
 import argparse
 import openai
+from openai import OpenAI
 from typing import Dict, List, Optional
 
 # Set up logging
@@ -26,9 +27,9 @@ def get_suggestion_openai(code: str, api_key: str) -> str:
         str: Generated docstring or empty string on failure
     """
     try:
-        openai.api_key = api_key
+        client = OpenAI(api_key=api_key)
         
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
