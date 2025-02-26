@@ -2,14 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name='python_copilot_docs_hook',
-    version='0.1.15',
-    description='A pre-commit hook to check Python documentation using GitHub Copilot',
-    long_description=open('README.md').read(),
-    long_description_content_type='text/markdown',
-    author='Itai Ganot',
-    author_email='lel@lel.bz',
-    url='https://github.com/geek-kb/python_copilot_docs_hook',
+    version='0.1.16',
     packages=find_packages(),
+    install_requires=[
+        'openai>=1.0.0',
+        'requests>=2.25.0',
+    ],
     entry_points={
         'console_scripts': [
             'python-copilot-docs=python_copilot_docs_hook.main:main',
