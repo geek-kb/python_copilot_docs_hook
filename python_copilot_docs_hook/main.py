@@ -19,41 +19,33 @@ logger = logging.getLogger('python_copilot_docs_hook')
 def get_copilot_suggestion(code: str) -> str:
     """Get documentation suggestion using GitHub Copilot CLI."""
     try:
-        # Create a temporary file for the code
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp:
-            temp.write(code)
-            temp_path = temp.name
+        # Try with 'suggest' command first
+        result = subprocess.run(
+            ['gh', 'copilot', 'suggest'],
+            input=f"Write a Python docstring for this code:\n{code}",
+            text=True,
+            capture_output=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            return format_suggestion(result.stdout)
 
-        try:
-            # Try interactive mode
-            result = subprocess.run(
-                ['gh', 'copilot', 'suggest', '-t', 'doc'],
-                input=code,
-                text=True,
-                capture_output=True,
-                timeout=10  # Add timeout
-            )
-            
-            if result.returncode == 0 and result.stdout:
-                return format_suggestion(result.stdout)
+        logger.debug(f"Suggest command failed: {result.stderr}")
 
-            # Try non-interactive mode
-            result = subprocess.run(
-                ['gh', 'copilot', 'suggest', '--no-prompt', '-t', 'doc'],
-                input=f"Generate Python docstring for:\n{code}",
-                text=True,
-                capture_output=True,
-                timeout=10
-            )
-            
-            if result.returncode == 0 and result.stdout:
-                return format_suggestion(result.stdout)
+        # Try with 'explain' command as fallback
+        result = subprocess.run(
+            ['gh', 'copilot', 'explain'],
+            input=code,
+            text=True,
+            capture_output=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            return format_suggestion(result.stdout)
 
-            logger.debug(f"Copilot failed: {result.stderr}")
-            
-        finally:
-            # Clean up temp file
-            os.unlink(temp_path)
+        logger.debug(f"Explain command failed: {result.stderr}")
 
     except subprocess.TimeoutExpired:
         logger.error("Copilot command timed out")
