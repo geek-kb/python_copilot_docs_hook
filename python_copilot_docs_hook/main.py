@@ -19,36 +19,45 @@ logger = logging.getLogger('python_copilot_docs_hook')
 def get_copilot_suggestion(code: str) -> str:
     """Get documentation suggestion using GitHub Copilot CLI."""
     try:
-        # Try direct suggestion first
+        # Try with specific Python docstring prompt
         result = subprocess.run(
             ['gh', 'copilot', 'suggest'],
-            input=f"Generate a concise Python docstring in reStructuredText format for:\n{code}",
+            input=(
+                "Generate a Python docstring with Args, Returns, and Raises sections "
+                f"for this code:\n\n{code}\n\n"
+                "Format: Google-style docstring with Args/Returns/Raises sections"
+            ),
             text=True,
             capture_output=True,
-            timeout=10
+            timeout=15
         )
         
         if result.returncode == 0 and result.stdout:
-            return format_suggestion(result.stdout)
+            suggestion = result.stdout.strip()
+            # Clean up Copilot's response
+            if suggestion.startswith('"""') and suggestion.endswith('"""'):
+                suggestion = suggestion[3:-3].strip()
+            return format_suggestion(suggestion)
 
         logger.debug(f"Suggest command failed: {result.stderr}")
 
-        # Try with completion prompt
+        # Try with explain command as fallback
         result = subprocess.run(
-            ['gh', 'copilot', 'suggest'],
-            input=f'"""\n{code}\n\nWrite documentation here:\n"""',
+            ['gh', 'copilot', 'explain'],
+            input=code,
             text=True,
             capture_output=True,
-            timeout=10
+            timeout=15
         )
         
         if result.returncode == 0 and result.stdout:
             return format_suggestion(result.stdout)
 
-        logger.debug(f"Completion prompt failed: {result.stderr}")
+        logger.error("All Copilot commands failed")
+        return ""
 
     except subprocess.TimeoutExpired:
-        logger.error("Copilot command timed out")
+        logger.error("Copilot command timed out after 15 seconds")
     except Exception as e:
         logger.error(f"Error getting Copilot suggestion: {e}")
 
