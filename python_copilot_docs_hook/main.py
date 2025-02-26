@@ -7,6 +7,7 @@ import ast
 import argparse
 import subprocess
 import tempfile
+import openai
 from typing import Dict, List, Optional
 
 # Set up logging
@@ -16,52 +17,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger('python_copilot_docs_hook')
 
-def get_copilot_suggestion(code: str) -> str:
-    """Get documentation suggestion using GitHub Copilot CLI."""
+def get_suggestion_openai(code: str) -> str:
+    """Get documentation suggestion using OpenAI API."""
     try:
-        # Try with specific Python docstring prompt
-        result = subprocess.run(
-            ['gh', 'copilot', 'suggest'],
-            input=(
-                "Generate a Python docstring with Args, Returns, and Raises sections "
-                f"for this code:\n\n{code}\n\n"
-                "Format: Google-style docstring with Args/Returns/Raises sections"
-            ),
-            text=True,
-            capture_output=True,
-            timeout=15
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Generate Python docstrings in Google style"},
+                {"role": "user", "content": f"Write documentation for:\n{code}"}
+            ]
         )
         
-        if result.returncode == 0 and result.stdout:
-            suggestion = result.stdout.strip()
-            # Clean up Copilot's response
-            if suggestion.startswith('"""') and suggestion.endswith('"""'):
-                suggestion = suggestion[3:-3].strip()
-            return format_suggestion(suggestion)
-
-        logger.debug(f"Suggest command failed: {result.stderr}")
-
-        # Try with explain command as fallback
-        result = subprocess.run(
-            ['gh', 'copilot', 'explain'],
-            input=code,
-            text=True,
-            capture_output=True,
-            timeout=15
-        )
+        return format_suggestion(response.choices[0].message.content)
         
-        if result.returncode == 0 and result.stdout:
-            return format_suggestion(result.stdout)
-
-        logger.error("All Copilot commands failed")
-        return ""
-
-    except subprocess.TimeoutExpired:
-        logger.error("Copilot command timed out after 15 seconds")
     except Exception as e:
-        logger.error(f"Error getting Copilot suggestion: {e}")
-
-    return ""
+        logger.error(f"OpenAI API failed: {e}")
+        return ""
 
 def format_suggestion(text: str) -> str:
     """Format Copilot output as a proper docstring."""
