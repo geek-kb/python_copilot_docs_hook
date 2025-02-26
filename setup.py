@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='python_copilot_docs_hook',
-    version='0.1.17',
+    version='0.1.18',
     packages=find_packages(),
     install_requires=[
         'openai>=1.0.0',

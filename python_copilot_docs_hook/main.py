@@ -15,22 +15,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger('python_copilot_docs_hook')
 
-def get_suggestion_openai(code: str) -> str:
+def get_suggestion_openai(code: str, api_key: str) -> str:
     """Get documentation suggestion using OpenAI API."""
     try:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        if not openai.api_key:
-            logger.error("OPENAI_API_KEY environment variable not set")
-            return ""
+        openai.api_key = api_key
         
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Generate Python docstrings in Google style. Be concise and clear."},
-                {"role": "user", "content": f"Write documentation for this Python code:\n\n{code}"}
+                {
+                    "role": "system", 
+                    "content": "You are a Python documentation expert. Generate clear, concise Google-style docstrings."
+                },
+                {
+                    "role": "user", 
+                    "content": (
+                        "Write a docstring for this Python code. Include args, returns, and raises sections "
+                        f"if applicable:\n\n{code}"
+                    )
+                }
             ],
-            temperature=0.7,
-            max_tokens=500
+            temperature=0.3,  # More focused output
+            max_tokens=250    # Shorter responses
         )
         
         return format_suggestion(response.choices[0].message.content)
@@ -355,18 +361,15 @@ def main() -> int:
         description='Add missing documentation to Python files using OpenAI'
     )
     parser.add_argument('filenames', nargs='*', help='Python files to process')
+    parser.add_argument('--openai-key', help='OpenAI API key', required=True)
     args = parser.parse_args()
 
     try:
-        if not os.getenv("OPENAI_API_KEY"):
-            logger.error("OPENAI_API_KEY environment variable not set")
-            return 1
-
         # Process files
         exit_code = 0
         for filename in args.filenames:
             logger.debug(f"Processing file: {filename}")
-            if not update_file_with_docs(filename):
+            if not update_file_with_docs(filename, args.openai_key):
                 exit_code = 1
 
         return exit_code
