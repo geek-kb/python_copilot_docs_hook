@@ -17,38 +17,49 @@ logger = logging.getLogger('python_copilot_docs_hook')
 def get_copilot_suggestion(code: str) -> str:
     """Get documentation suggestion using GitHub Copilot CLI."""
     try:
-        # Create temporary file for code
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp:
-            temp.write(code)
-            temp_path = temp.name
-
-        # Try suggest command first
+        # Try suggest command with direct input
         try:
             result = subprocess.run(
-                ['gh', 'copilot', 'suggest', '-t', 'python'],
-                input=f"Generate Python docstring for:\n{code}",
+                ['gh', 'copilot', 'suggest'],
+                input=f"Write a Python docstring for this code:\n\n{code}",
                 capture_output=True,
                 text=True,
                 check=True
             )
             if result.stdout:
                 return format_suggestion(result.stdout)
-        except subprocess.CalledProcessError:
-            logger.debug("Suggest command failed, trying explain command")
+        except subprocess.CalledProcessError as e:
+            logger.debug(f"Suggest command failed: {e.stderr}")
+            
+            # Try explain command with code directly
+            try:
+                result = subprocess.run(
+                    ['gh', 'copilot', 'explain', '-t', 'python'],
+                    input=code,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                if result.stdout:
+                    return format_suggestion(result.stdout)
+            except subprocess.CalledProcessError as e:
+                logger.debug(f"Explain command failed: {e.stderr}")
 
-        # Fallback to explain command
-        result = subprocess.run(
-            ['gh', 'copilot', 'explain'],
-            input=code,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+                # Final attempt with gh copilot completion
+                try:
+                    result = subprocess.run(
+                        ['gh', 'copilot', 'completion'],
+                        input=f"'''\nWrite documentation for:\n{code}\n'''",
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    if result.stdout:
+                        return format_suggestion(result.stdout)
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"All Copilot commands failed. Last error: {e.stderr}")
 
-        # Clean up temp file
-        os.unlink(temp_path)
-
-        return format_suggestion(result.stdout) if result.stdout else ""
+        return ""
 
     except Exception as e:
         logger.error(f"Error getting Copilot suggestion: {e}")
