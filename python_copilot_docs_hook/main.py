@@ -14,27 +14,17 @@ logging.basicConfig(
 logger = logging.getLogger('python_copilot_docs_hook')
 
 def get_copilot_suggestion(code: str) -> str:
-    """Get documentation suggestion from GitHub Copilot API."""
+    """Get documentation suggestion using GitHub Copilot CLI."""
     try:
-        headers = {
-            'Authorization': f"Bearer {os.environ.get('GITHUB_COPILOT_TOKEN')}",
-            'Content-Type': 'application/json',
-        }
-
-        data = {
-            'prompt': f"Generate a Python docstring for this code:\n\n{code}\n\nInclude description, Args, Returns, and Raises sections if applicable.",
-            'max_tokens': 500,
-            'temperature': 0.3
-        }
-
-        response = requests.post(
-            'https://api.github.com/copilot/completions',
-            headers=headers,
-            json=data
+        result = subprocess.run(
+            ['gh', 'copilot', 'suggest', '--format', 'json'],
+            input=f"Write a Python docstring for:\n{code}",
+            text=True,
+            capture_output=True,
+            check=True
         )
-        response.raise_for_status()
-
-        return response.json()['choices'][0]['text'].strip()
+        response = json.loads(result.stdout)
+        return response['choices'][0]['text'].strip()
     except Exception as e:
         logger.error(f"Error getting Copilot suggestion: {e}")
         return ""
