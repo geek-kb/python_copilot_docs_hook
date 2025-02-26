@@ -17,47 +17,30 @@ logger = logging.getLogger('python_copilot_docs_hook')
 def get_copilot_suggestion(code: str) -> str:
     """Get documentation suggestion using GitHub Copilot CLI."""
     try:
-        # Try suggest command with direct input
-        try:
-            result = subprocess.run(
-                ['gh', 'copilot', 'suggest'],
-                input=f"Write a Python docstring for this code:\n\n{code}",
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            if result.stdout:
-                return format_suggestion(result.stdout)
-        except subprocess.CalledProcessError as e:
-            logger.debug(f"Suggest command failed: {e.stderr}")
-            
-            # Try explain command with code directly
-            try:
-                result = subprocess.run(
-                    ['gh', 'copilot', 'explain', '-t', 'python'],
-                    input=code,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                if result.stdout:
-                    return format_suggestion(result.stdout)
-            except subprocess.CalledProcessError as e:
-                logger.debug(f"Explain command failed: {e.stderr}")
+        # Try direct suggestion first
+        suggestion = _try_copilot_command(
+            ['gh', 'copilot', 'suggest'],
+            f"Write a Python docstring for:\n{code}"
+        )
+        if suggestion:
+            return format_suggestion(suggestion)
 
-                # Final attempt with gh copilot completion
-                try:
-                    result = subprocess.run(
-                        ['gh', 'copilot', 'completion'],
-                        input=f"'''\nWrite documentation for:\n{code}\n'''",
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    if result.stdout:
-                        return format_suggestion(result.stdout)
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"All Copilot commands failed. Last error: {e.stderr}")
+        # Try explain command
+        suggestion = _try_copilot_command(
+            ['gh', 'copilot', 'explain'],
+            code,
+            additional_args=['--language', 'python']
+        )
+        if suggestion:
+            return format_suggestion(suggestion)
+
+        # Try completion as last resort
+        suggestion = _try_copilot_command(
+            ['gh', 'copilot', 'completion'],
+            f'"""\nWrite a complete docstring for this Python code:\n{code}\n"""'
+        )
+        if suggestion:
+            return format_suggestion(suggestion)
 
         return ""
 
@@ -65,6 +48,38 @@ def get_copilot_suggestion(code: str) -> str:
         logger.error(f"Error getting Copilot suggestion: {e}")
         return ""
 
+def _try_copilot_command(command: List[str], input_text: str, additional_args: List[str] = None) -> Optional[str]:
+    """Execute a GitHub Copilot CLI command with proper error handling."""
+    try:
+        cmd = command + (additional_args or [])
+        logger.debug(f"Trying command: {' '.join(cmd)}")
+        
+        # Use temporary file for input
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
+            tmp.write(input_text)
+            tmp.flush()
+            
+            result = subprocess.run(
+                cmd + ['--file', tmp.name],
+                capture_output=True,
+                text=True,
+                check=False  # Don't raise exception on non-zero exit
+            )
+            
+            os.unlink(tmp.name)
+            
+            if result.returncode == 0 and result.stdout:
+                return result.stdout
+            
+            if result.stderr:
+                logger.debug(f"Command failed: {result.stderr}")
+            
+            return None
+            
+    except Exception as e:
+        logger.debug(f"Command execution failed: {e}")
+        return None
+    
 def format_suggestion(text: str) -> str:
     """Format Copilot output as a proper docstring."""
     lines = []
