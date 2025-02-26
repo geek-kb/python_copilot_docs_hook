@@ -112,13 +112,32 @@ def format_suggestion(text: str) -> str:
 def update_file_with_docs(filename: str) -> bool:
     """Update Python file with generated documentation."""
     try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # Read file content
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                content = f.read().strip()  # Strip to remove extra whitespace
+        except Exception as e:
+            logger.error(f"Error reading file {filename}: {e}")
+            return False
 
+        # Parse Python code
         try:
             tree = ast.parse(content)
         except SyntaxError as e:
-            logger.error(f"Syntax error in file {filename} at line {e.lineno}: {e.msg}")
+            # Get problematic line for better error message
+            lines = content.splitlines()
+            if 0 <= e.lineno - 1 < len(lines):
+                problematic_line = lines[e.lineno - 1]
+                logger.error(f"Syntax error in file {filename}:")
+                logger.error(f"Line {e.lineno}: {problematic_line}")
+                logger.error(f"Error: {e.msg}")
+                # Show position of error with caret
+                logger.error(" " * (e.offset + 7) + "^")
+            else:
+                logger.error(f"Syntax error in file {filename} at line {e.lineno}: {e.msg}")
+            return False
+        except Exception as e:
+            logger.error(f"Error parsing file {filename}: {e}")
             return False
 
         modified = False
