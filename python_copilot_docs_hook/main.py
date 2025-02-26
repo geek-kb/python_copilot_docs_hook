@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Python documentation generator using GitHub Copilot CLI."""
+
 import logging
 import os
 import ast
@@ -17,63 +19,39 @@ logger = logging.getLogger('python_copilot_docs_hook')
 def get_copilot_suggestion(code: str) -> str:
     """Get documentation suggestion using GitHub Copilot CLI."""
     try:
-        # Try direct suggestion first
-        suggestion = _try_copilot_command(
-            ['gh', 'copilot', 'suggest'],
-            f"Write a Python docstring for this code:\n\n{code}"
-        )
-        if suggestion:
-            return format_suggestion(suggestion)
-
-        # Try explain command
-        suggestion = _try_copilot_command(
-            ['gh', 'copilot', 'explain'],
-            code
-        )
-        if suggestion:
-            return format_suggestion(suggestion)
-
-        # Try completion as last resort
-        suggestion = _try_copilot_command(
-            ['gh', 'copilot', 'completion'],
-            f'"""\nWrite a complete docstring for this Python code:\n{code}\n"""'
-        )
-        if suggestion:
-            return format_suggestion(suggestion)
-
-        return ""
-
-    except Exception as e:
-        logger.error(f"Error getting Copilot suggestion: {e}")
-        return ""
-
-def _try_copilot_command(command: List[str], input_text: str, additional_args: List[str] = None) -> Optional[str]:
-    """Execute a GitHub Copilot CLI command with proper error handling."""
-    try:
-        cmd = command + (additional_args or [])
-        logger.debug(f"Trying command: {' '.join(cmd)}")
-        
-        # Run command with input through stdin
+        # Try interactive suggestion
         result = subprocess.run(
-            cmd,
-            input=input_text,
+            ['gh', 'copilot', 'suggest'],
+            input=f"Write a Python docstring for:\n{code}",
             capture_output=True,
             text=True,
-            check=False  # Don't raise exception on non-zero exit
+            check=False
         )
         
         if result.returncode == 0 and result.stdout:
-            return result.stdout
+            return format_suggestion(result.stdout)
+
+        logger.debug(f"Suggest command failed: {result.stderr}")
         
-        if result.stderr:
-            logger.debug(f"Command failed: {result.stderr}")
-        
-        return None
-            
+        # Try explain command
+        result = subprocess.run(
+            ['gh', 'copilot', 'explain'],
+            input=code,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        if result.returncode == 0 and result.stdout:
+            return format_suggestion(result.stdout)
+
+        logger.debug(f"Explain command failed: {result.stderr}")
+
     except Exception as e:
-        logger.debug(f"Command execution failed: {e}")
-        return None
-    
+        logger.error(f"Error getting Copilot suggestion: {e}")
+
+    return ""
+
 def format_suggestion(text: str) -> str:
     """Format Copilot output as a proper docstring."""
     lines = []
@@ -107,37 +85,55 @@ def format_suggestion(text: str) -> str:
             lines.append(f"    {ret_desc}")
             lines.append("")
 
+    # Process exceptions
+    for para in paragraphs:
+        if "Raises:" in para:
+            lines.append("Raises:")
+            for line in para.split('\n')[1:]:
+                if ':' in line:
+                    exc, desc = line.split(':', 1)
+                    lines.append(f"    {exc.strip()}: {desc.strip()}")
+                elif line.strip():
+                    lines.append(f"    {line.strip()}")
+            lines.append("")
+
     return "\n".join(lines).strip()
+
+def validate_file(filename: str) -> bool:
+    """Validate Python file before processing."""
+    if not os.path.isfile(filename):
+        logger.error(f"File not found: {filename}")
+        return False
+        
+    if not filename.endswith('.py'):
+        logger.error(f"Not a Python file: {filename}")
+        return False
+        
+    return True
 
 def update_file_with_docs(filename: str) -> bool:
     """Update Python file with generated documentation."""
+    if not validate_file(filename):
+        return False
+
     try:
         # Read file content
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                content = f.read().strip()  # Strip to remove extra whitespace
-        except Exception as e:
-            logger.error(f"Error reading file {filename}: {e}")
-            return False
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
 
         # Parse Python code
         try:
             tree = ast.parse(content)
         except SyntaxError as e:
-            # Get problematic line for better error message
             lines = content.splitlines()
             if 0 <= e.lineno - 1 < len(lines):
                 problematic_line = lines[e.lineno - 1]
                 logger.error(f"Syntax error in file {filename}:")
                 logger.error(f"Line {e.lineno}: {problematic_line}")
                 logger.error(f"Error: {e.msg}")
-                # Show position of error with caret
                 logger.error(" " * (e.offset + 7) + "^")
             else:
                 logger.error(f"Syntax error in file {filename} at line {e.lineno}: {e.msg}")
-            return False
-        except Exception as e:
-            logger.error(f"Error parsing file {filename}: {e}")
             return False
 
         modified = False
@@ -158,7 +154,6 @@ def update_file_with_docs(filename: str) -> bool:
                 doc = get_copilot_suggestion(func_code)
                 
                 if doc:
-                    # Insert docstring after function definition
                     lines = content.splitlines()
                     indent = ' ' * node.col_offset
                     doc_lines = [f'{indent}    """{line}"""' for line in doc.splitlines()]
@@ -166,7 +161,7 @@ def update_file_with_docs(filename: str) -> bool:
                     content = '\n'.join(lines)
                     modified = True
 
-        # Write changes if any modifications were made
+        # Write changes if modified
         if modified:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(content)
@@ -187,7 +182,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        # Check if gh CLI and Copilot extension are available
+        # Verify GitHub CLI and Copilot extension
         try:
             subprocess.run(['gh', '--version'], check=True, capture_output=True)
             subprocess.run(['gh', 'copilot', '--version'], check=True, capture_output=True)
@@ -198,13 +193,12 @@ def main() -> int:
             logger.error("3. gh auth login")
             return 1
 
-        # Process each Python file
+        # Process files
         exit_code = 0
         for filename in args.filenames:
-            if filename.endswith('.py'):
-                logger.debug(f"Processing file: {filename}")
-                if not update_file_with_docs(filename):
-                    exit_code = 1
+            logger.debug(f"Processing file: {filename}")
+            if not update_file_with_docs(filename):
+                exit_code = 1
 
         return exit_code
 
