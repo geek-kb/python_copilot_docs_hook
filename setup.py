@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='python_copilot_docs_hook',
-    version='0.1.1',
+    version='0.1.2',
     description='A pre-commit hook to check Python documentation using GitHub Copilot',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
