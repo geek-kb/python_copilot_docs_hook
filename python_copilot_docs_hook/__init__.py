@@ -1,3 +1,3 @@
-"""Python documentation checker using GitHub Copilot."""
+"""Python documentation generator using GitHub Copilot."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
