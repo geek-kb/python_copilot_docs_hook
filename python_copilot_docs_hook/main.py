@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
 import logging
 import os
 import ast
 import argparse
 from typing import Dict, List, Optional
+import requests
+import json
 
 # Set up logging
 logging.basicConfig(
@@ -12,67 +13,84 @@ logging.basicConfig(
 )
 logger = logging.getLogger('python_copilot_docs_hook')
 
-def check_docstrings(filename: str) -> Dict[str, List[int]]:
-    """Check for missing docstrings in Python file."""
-    missing_docs = {'module': [], 'functions': []}
+def get_copilot_suggestion(code: str) -> str:
+    """Get documentation suggestion from GitHub Copilot API."""
+    try:
+        headers = {
+            'Authorization': f"Bearer {os.environ.get('GITHUB_COPILOT_TOKEN')}",
+            'Content-Type': 'application/json',
+        }
 
+        data = {
+            'prompt': f"Generate a Python docstring for this code:\n\n{code}\n\nInclude description, Args, Returns, and Raises sections if applicable.",
+            'max_tokens': 500,
+            'temperature': 0.3
+        }
+
+        response = requests.post(
+            'https://api.github.com/copilot/completions',
+            headers=headers,
+            json=data
+        )
+        response.raise_for_status()
+
+        return response.json()['choices'][0]['text'].strip()
+    except Exception as e:
+        logger.error(f"Error getting Copilot suggestion: {e}")
+        return ""
+
+def update_file_with_docs(filename: str) -> bool:
+    """Update Python file with generated documentation."""
     with open(filename, 'r', encoding='utf-8') as f:
-        try:
-            tree = ast.parse(f.read())
-        except SyntaxError:
-            logger.error(f"Syntax error in file: {filename}")
-            return missing_docs
+        content = f.read()
 
-    # Check module docstring
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        logger.error(f"Syntax error in file: {filename}")
+        return False
+
+    # Generate module docstring if missing
     if not ast.get_docstring(tree):
-        missing_docs['module'].append(1)
-        logger.info(f"Module docstring missing in {filename}")
+        module_doc = get_copilot_suggestion(content)
+        if module_doc:
+            content = f'"""{module_doc}"""\n\n{content}'
 
-    # Check function docstrings
+    # Find and generate function docstrings
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            if not ast.get_docstring(node):
-                missing_docs['functions'].append(node.lineno)
-                logger.info(f"Function docstring missing for '{node.name}' at line {node.lineno}")
+        if isinstance(node, ast.FunctionDef) and not ast.get_docstring(node):
+            func_code = ast.get_source_segment(content, node)
+            doc = get_copilot_suggestion(func_code)
+            if doc:
+                # Insert docstring after function definition
+                lines = content.splitlines()
+                indent = ' ' * node.col_offset
+                doc_lines = [f'{indent}    """{line}"""' for line in doc.splitlines()]
+                lines.insert(node.lineno, '\n'.join(doc_lines))
+                content = '\n'.join(lines)
 
-    return missing_docs
+    # Write updated content back to file
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(content)
 
-def generate_report(filename: str, missing_docs: Dict[str, List[int]]) -> str:
-    """Generate report for missing documentation."""
-    report = []
-
-    if missing_docs['module'] or missing_docs['functions']:
-        report.append(f"\nMissing documentation in {filename}:")
-
-        if missing_docs['module']:
-            report.append("- Module docstring missing")
-            report.append("  Suggestion: Place cursor at line 1 and press Alt+\\")
-
-        if missing_docs['functions']:
-            report.append("- Function docstrings missing at lines: " +
-                        ", ".join(map(str, missing_docs['functions'])))
-            report.append("  Suggestion: Place cursor at function definition and press Alt+\\")
-
-    return "\n".join(report)
+    return True
 
 def main() -> int:
-    """Process Python files and check for missing documentation."""
-    parser = argparse.ArgumentParser(
-        description='Check Python files for missing documentation'
-    )
-    parser.add_argument('filenames', nargs='*', help='Python files to check')
+    """Process Python files and add missing documentation."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filenames', nargs='*', help='Python files to process')
     args = parser.parse_args()
 
     try:
-        exit_code = 0
+        if not os.environ.get('GITHUB_COPILOT_TOKEN'):
+            logger.error("GITHUB_COPILOT_TOKEN environment variable not set")
+            return 1
 
+        exit_code = 0
         for filename in args.filenames:
             if filename.endswith('.py'):
-                logger.debug(f"Checking {filename}")
-                missing_docs = check_docstrings(filename)
-
-                if missing_docs['module'] or missing_docs['functions']:
-                    print(generate_report(filename, missing_docs))
+                logger.debug(f"Processing {filename}")
+                if not update_file_with_docs(filename):
                     exit_code = 1
 
         return exit_code
